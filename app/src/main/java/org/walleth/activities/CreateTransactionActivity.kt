@@ -54,7 +54,6 @@ import org.walleth.data.config.Settings
 import org.walleth.data.keystore.WallethKeyStore
 import org.walleth.data.networks.CurrentAddressProvider
 import org.walleth.data.networks.NetworkDefinitionProvider
-import org.walleth.data.networks.getNetworkDefinitionByChainID
 import org.walleth.data.tokens.*
 import org.walleth.data.transactions.TransactionState
 import org.walleth.data.transactions.toEntity
@@ -67,6 +66,7 @@ import org.walleth.khex.hexToByteArray
 import org.walleth.khex.toHexString
 import org.walleth.khex.toNoPrefixHexString
 import org.walleth.ui.asyncAwait
+import org.walleth.ui.chainIDAlert
 import org.walleth.util.question
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -144,7 +144,10 @@ class CreateTransactionActivity : AppCompatActivity(), KodeinAware {
             lastWarningURI = savedInstanceState.getString("lastERC67")
         }
 
-        supportActionBar?.subtitle = getString(R.string.create_transaction_on_network_subtitle, networkDefinitionProvider.getCurrent().getNetworkName())
+        networkDefinitionProvider.observe(this , Observer {
+            supportActionBar?.subtitle = getString(R.string.create_transaction_on_network_subtitle, networkDefinitionProvider.getCurrent().getNetworkName())
+        })
+
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
         onCurrentTokenChanged()
@@ -410,64 +413,71 @@ class CreateTransactionActivity : AppCompatActivity(), KodeinAware {
 
             if (currentERC681?.valid == true) {
 
-                showWarningOnWrongNetwork(localERC681)
+                chainIDAlert(networkDefinitionProvider,
+                        localERC681.chainId,
+                        continuationWithWrongChainId = {
+                            finish()
+                        },
+                        continuationWithCorrectOrNullChainId = {
 
-                intent.getStringExtra("nonce")?.let {
-                    nonce_input.setText(it.maybeHexToBigInteger().toString())
-                }
-
-                currentToAddress = localERC681.getToAddress()?.apply {
-                    to_address.text = this.hex
-                    appDatabase.addressBook.resolveNameAsync(this) {
-                        to_address.text = it
-                    }
-                }
-
-                if (localERC681.isTokenTransfer()) {
-                    if (localERC681.address != null) {
-                        { appDatabase.tokens.forAddress(Address(localERC681.address!!)) }.asyncAwait { token ->
-                            if (token != null) {
-
-                                if (token != currentTokenProvider.currentToken) {
-                                    currentTokenProvider.currentToken = token
-                                    currentBalanceLive!!.removeObservers(this)
-                                    onCurrentTokenChanged()
-                                }
-
-                                amount_input.setText(BigDecimal(localERC681.getValueForTokenTransfer()).divide(token.decimalsAsMultiplicator()).toPlainString())
-                            } else {
-                                alert(getString(R.string.add_token_manually, localERC681.address), getString(R.string.unknown_token))
+                            intent.getStringExtra("nonce")?.let {
+                                nonce_input.setText(it.maybeHexToBigInteger().toString())
                             }
-                        }
-                    } else {
-                        alert(getString(R.string.no_token_address), getString(R.string.unknown_token))
-                    }
-                } else {
 
-                    if (localERC681.function != null) {
-                        checkFunctionParameters(localERC681)
+                            currentToAddress = localERC681.getToAddress()?.apply {
+                                to_address.text = this.hex
+                                appDatabase.addressBook.resolveNameAsync(this) {
+                                    to_address.text = it
+                                }
+                            }
 
-                    }
-                    localERC681.value?.let {
+                            if (localERC681.isTokenTransfer()) {
+                                if (localERC681.address != null) {
+                                    { appDatabase.tokens.forAddress(Address(localERC681.address!!)) }.asyncAwait { token ->
+                                        if (token != null) {
 
-                        if (!currentTokenProvider.currentToken.isETH()) {
-                            currentTokenProvider.currentToken = getEthTokenForChain(networkDefinitionProvider.getCurrent())
-                            currentBalanceLive!!.removeObservers(this)
-                            onCurrentTokenChanged()
-                        }
+                                            if (token != currentTokenProvider.currentToken) {
+                                                currentTokenProvider.currentToken = token
+                                                currentBalanceLive!!.removeObservers(this)
+                                                onCurrentTokenChanged()
+                                            }
 
-                        amount_input.setText(BigDecimal(it).divide(currentTokenProvider.currentToken.decimalsAsMultiplicator()).toPlainString())
+                                            amount_input.setText(BigDecimal(localERC681.getValueForTokenTransfer()).divide(token.decimalsAsMultiplicator()).toPlainString())
+                                        } else {
+                                            alert(getString(R.string.add_token_manually, localERC681.address), getString(R.string.unknown_token))
+                                        }
+                                    }
+                                } else {
+                                    alert(getString(R.string.no_token_address), getString(R.string.unknown_token))
+                                }
+                            } else {
 
-                        // when called from onCreate() the afterEdwer outage foit hook is not yet added
-                        setAmountFromETHString(amount_input.text.toString())
-                        amount_value.setValue(currentAmount ?: ZERO, currentTokenProvider.currentToken)
-                    }
-                }
+                                if (localERC681.function != null) {
+                                    checkFunctionParameters(localERC681)
 
-                localERC681.gas?.let {
-                    show_advanced_button.callOnClick()
-                    gas_limit_input.setText(it.toString())
-                }
+                                }
+                                localERC681.value?.let {
+
+                                    if (!currentTokenProvider.currentToken.isETH()) {
+                                        currentTokenProvider.currentToken = getEthTokenForChain(networkDefinitionProvider.getCurrent())
+                                        currentBalanceLive!!.removeObservers(this)
+                                        onCurrentTokenChanged()
+                                    }
+
+                                    amount_input.setText(BigDecimal(it).divide(currentTokenProvider.currentToken.decimalsAsMultiplicator()).toPlainString())
+
+                                    // when called from onCreate() the afterEdwer outage foit hook is not yet added
+                                    setAmountFromETHString(amount_input.text.toString())
+                                    amount_value.setValue(currentAmount ?: ZERO, currentTokenProvider.currentToken)
+                                }
+                            }
+
+                            localERC681.gas?.let {
+                                show_advanced_button.callOnClick()
+                                gas_limit_input.setText(it.toString())
+                            }
+
+                        })
 
             } else {
                 currentToAddress = null
@@ -531,17 +541,6 @@ class CreateTransactionActivity : AppCompatActivity(), KodeinAware {
             alert(getString(R.string.warning_problem_with_parameter, indexOfFirsInvalidParameter.toString(), type, value))
             return
         }
-    }
-
-    private fun showWarningOnWrongNetwork(erc681: ERC681): Boolean {
-        if (erc681.chainId != null && erc681.chainId != networkDefinitionProvider.getCurrent().chain.id) {
-            val chainForTransaction = getNetworkDefinitionByChainID(erc681.chainId!!)?.getNetworkName() ?: erc681.chainId.toString()
-            val currentNetworkName = networkDefinitionProvider.getCurrent().getNetworkName()
-            val message = getString(R.string.please_switch_network, currentNetworkName, chainForTransaction)
-            alert(title = getString(R.string.wrong_network), message = message)
-            return true
-        }
-        return false
     }
 
     private fun storeDefaultGasPriceAndFinish() {

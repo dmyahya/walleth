@@ -15,9 +15,7 @@ import org.json.JSONObject
 import org.kethereum.eip155.extractChainID
 import org.kethereum.erc681.ERC681
 import org.kethereum.erc681.generateURL
-import org.kethereum.functions.rlp.RLPList
-import org.kethereum.functions.rlp.decodeRLP
-import org.kethereum.functions.rlp.encode
+import org.kethereum.functions.rlp.*
 import org.kethereum.functions.toTransaction
 import org.kethereum.functions.toTransactionSignatureData
 import org.kethereum.keccakshortcut.keccak
@@ -41,6 +39,7 @@ import org.walleth.functions.toHexString
 import org.walleth.khex.clean0xPrefix
 import org.walleth.khex.hexToByteArray
 import org.walleth.khex.toHexString
+import org.walleth.ui.chainIDAlert
 import org.walleth.util.isParityUnsignedTransactionJSON
 import org.walleth.util.isSignedTransactionJSON
 import org.walleth.util.isUnsignedTransactionJSON
@@ -138,22 +137,34 @@ class OfflineTransactionActivity : AppCompatActivity(), KodeinAware {
         val dataJSON = json.getJSONObject("data")
         val rlp = dataJSON.getString("rlp").hexToByteArray().decodeRLP()
         if (rlp is RLPList) {
-            val transaction = rlp.toTransaction()
-            if (transaction == null) {
-                alert("could not decode transaction")
-            } else {
-                handleUnsignedTransaction(
-                        from = "0x" + dataJSON.getString("account").clean0xPrefix(),
-                        to = transaction.to!!.hex,
-                        data = transaction.input.toHexString(),
-                        value = transaction.value.toHexString(),
-                        nonce = transaction.nonce!!.toHexString(),
-                        gasPrice = transaction.gasPrice.toHexString(),
-                        gasLimit = transaction.gasLimit.toHexString(),
-                        chainId = networkDefinitionProvider.getCurrent().chain.id,
-                        parityFlow = true
-                )
+            if (rlp.element.size != 9) {
+                alert("Invalid RLP list - has size " + rlp.element.size + " should have 9")
+                return
             }
+
+            val transaction = rlp.toTransaction()
+
+            val chainId = (rlp.element[6] as RLPElement).toBigIntegerFromRLP()
+
+            chainIDAlert(networkDefinitionProvider, chainId.toLong()) {
+
+                if (transaction == null) {
+                    alert("could not decode transaction")
+                } else {
+                    handleUnsignedTransaction(
+                            from = "0x" + dataJSON.getString("account").clean0xPrefix(),
+                            to = transaction.to!!.hex,
+                            data = transaction.input.toHexString(),
+                            value = transaction.value.toHexString(),
+                            nonce = transaction.nonce!!.toHexString(),
+                            gasPrice = transaction.gasPrice.toHexString(),
+                            gasLimit = transaction.gasLimit.toHexString(),
+                            chainId = networkDefinitionProvider.getCurrent().chain.id,
+                            parityFlow = true
+                    )
+                }
+            }
+
         } else {
             alert("Invalid RLP")
         }
