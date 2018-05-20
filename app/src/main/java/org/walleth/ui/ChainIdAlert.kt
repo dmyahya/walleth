@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.content.Context
 import android.content.DialogInterface
 import org.ligi.kaxtui.alert
+import org.walleth.R
 import org.walleth.data.networks.NetworkDefinitionProvider
 import org.walleth.data.networks.getNetworkDefinitionByChainID
 
@@ -21,10 +22,13 @@ fun Context.chainIDAlert(networkDefinitionProvider: NetworkDefinitionProvider,
         val networkToSwitchTo = getNetworkDefinitionByChainID(chainId)
 
         if (networkToSwitchTo == null) {
-            alert("WallETH is not supporting chain with id $chainId", "", DialogInterface.OnClickListener { _: DialogInterface, _: Int ->
-                continuationWithWrongChainId()
-            })
-
+            alert(
+                    message = getString(R.string.alert_network_unsupported_message, chainId),
+                    title = getString(R.string.alert_network_unsupported_title),
+                    onOKListener = DialogInterface.OnClickListener { _: DialogInterface, _: Int ->
+                        continuationWithWrongChainId()
+                    }
+            )
             return
         }
 

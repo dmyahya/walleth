@@ -227,4 +227,6 @@ Unfortunately there is no faucet for the test-net. So if you want to try out thi
     <string name="security_info">Security Information</string>
     <string name="click_for_details">Click for details</string>
     <string name="activity_subtitle_oss_license">OSS licenses information</string>
+    <string name="alert_network_unsupported_title">Network invalid</string>
+    <string name="alert_network_unsupported_message">WallETH is not supporting network with chainId %d</string>
 </resources>
